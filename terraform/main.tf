@@ -13,6 +13,32 @@ resource "aws_iam_role" "lambda_role" {
   })
 }
 
+# Update the Lambda execution role to allow access to the secret
+resource "aws_iam_policy" "lambda_secrets_access" {
+  name   = "LambdaSecretsAccessPolicy"
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect   = "Allow",
+        Action   = ["secretsmanager:GetSecretValue"],
+        Resource = aws_secretsmanager_secret.linkedin_token.arn
+      }
+    ]
+  })
+}
+
+# Create a Secrets Manager secret for LinkedIn token
+resource "aws_secretsmanager_secret" "linkedin_token" {
+  name        = "linkedin-token"
+  description = "LinkedIn API token for Lambda function"
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_secrets_attachment" {
+  role       = aws_iam_role.lambda_role .name
+  policy_arn = aws_iam_policy.lambda_secrets_access.arn
+}
+
 resource "aws_iam_policy_attachment" "lambda_logs" {
   name       = "lambda_logs"
   roles      = [aws_iam_role.lambda_role.name]
@@ -29,7 +55,8 @@ resource "aws_lambda_function" "linkedin_job_apply" {
   source_code_hash = filebase64sha256("lambda_function.zip")
   environment {
     variables = {
-      LINKEDIN_API_TOKEN = var.linkedin_api_token
+      LINKEDIN_API_TOKEN = aws_secretsmanager_secret.linkedin_token.name,
+      LINKEDIN_API_URL = "api.linkedin.com/v2"
     }
   }
 }
@@ -43,7 +70,7 @@ resource "aws_cloudwatch_event_rule" "schedule" {
 resource "aws_cloudwatch_event_target" "lambda_target" {
   rule      = aws_cloudwatch_event_rule.schedule.name
   arn       = aws_lambda_function.linkedin_job_apply.arn
-}
+}`
 
 resource "aws_lambda_permission" "allow_eventbridge" {
   statement_id  = "AllowExecutionFromEventBridge"
