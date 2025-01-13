@@ -1,0 +1,39 @@
+name: Deploy Lambda
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install Dependencies
+        run: pip install -r lambda/requirements.txt
+
+      - name: Run Tests
+        run: pytest tests
+
+      - name: Zip Lambda Function
+        run: |
+          cd lambda
+          zip -r ../lambda_function.zip .
+
+      - name: Deploy to AWS
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE }}
+          aws-region: us-east-1
+
+      - name: Apply Terraform
+        run: terraform apply -auto-approve
